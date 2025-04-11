@@ -561,21 +561,21 @@ static const struct attribute_group sitime_attr_group[] = {
 	sitime_attrclk11_group
 };
 
-int configure_sysfs_outputclk(unsigned int chip_id)
+int configure_sysfs_outputclk(const char * chip_name)
 {
 	int ret   = SUCCESS;
 	int index = 0;
 	char ptr[20];
 	static int count;
 	
-	snprintf(ptr, 20, "sitimeclk_%x_%d", chip_id,count++);
+	snprintf(ptr, 20, "sitimeclk_%s_%d", chip_name,count++);
 
 	kobjparent = kobject_create_and_add(ptr, kernel_kobj);
 	if (!kobjparent) {
 		return -ENOMEM;
 	}
 
-	for (index = 0; index < g_brd->num_outputs; index++) {
+	for (index = 0; index < g_brd->chip_info->num_outputs; index++) {
 
 		kobj[index] = kobject_create_and_add(g_brd->output_clk[index].clkName, kobjparent);
 		if (!kobj[index]) {
@@ -597,7 +597,7 @@ void remove_sysfs_outputclk(void)
 	int index = 0;
 	kobject_put(kobjparent);
 
-	for (index = 0; index < g_brd->num_outputs; index++) {
+	for (index = 0; index < g_brd->chip_info->num_outputs; index++) {
 
 		kobject_put(kobj[index]);
 		sysfs_remove_group(kernel_kobj, &sitime_attr_group[index]);

@@ -19,7 +19,7 @@ struct drv_si9531x * g_brd = NULL;
 u64 g_Fvco = FVCO_LOWBAND_FREQ_MIN;
 
 //extern sysfs_output_clk function for clk sysfs control
-extern int configure_sysfs_outputclk(unsigned int chip_id);
+extern int configure_sysfs_outputclk(const char *);
 extern void remove_sysfs_outputclk(void);
 
 int get_outclk_pll(unsigned int clkid)
@@ -50,7 +50,7 @@ void clkoutput_frequency(const char *buff, unsigned int clkid)
 
 	printk(KERN_INFO " %s : clkid: %d pll: %c frequency: %d\n", __func__, clkid, 65 + pllid, freq);
 
-	freq = clkout_set_frequency(g_brd->client, clkid, pllid, freq);
+	freq = clkout_set_frequency(g_brd, clkid, pllid, freq);
 
 	g_brd->output_clk[clkid].freq = freq;
 }
@@ -64,7 +64,7 @@ void clkoutput_status(const char *buff, unsigned int clkid)
 
 	printk(KERN_INFO " %s : clkid: %d status: %d\n", __func__, clkid, status);
 
-	ret = clkout_enable_disable(g_brd->client, clkid, status);
+	ret = clkout_enable_disable(g_brd, clkid, status);
 
 	g_brd->output_clk[clkid].status = status;
 }
@@ -184,7 +184,9 @@ static unsigned long si9531x_clkout_recalc_rate(struct clk_hw *hw, unsigned long
 		pllid = PLLD;
 	}
 
-	freq = clkout_set_frequency(clkdata->data->client, clkdata->reg, pllid, clkdata->freq); 
+	// TODO: I think this is wrong.  This should read the device to determine the currently set value not program to a value from the DT
+	// This could cause the outputs to change unexpectedly during boot especially if the DT values don't exactly match the values from the eeprom
+	freq = clkout_set_frequency(clkdata->data, clkdata->reg, pllid, clkdata->freq); 
 	if (freq < 0) {
 		printk(KERN_ERR "Set Clock freq failed for clkname : %s\n", clkdata->clkName);
 		return 0;
@@ -211,7 +213,7 @@ static int si9531x_clkout_is_enabled(struct clk_hw *hw)
 			clkdata->reg, \
 			clkdata->status);
 
-	ret = clkout_is_enable_disable(clkdata->data->client, clkdata->reg, ON, &ret);
+	ret = clkout_is_enable_disable(clkdata->data, clkdata->reg, ON, &ret);
 
 	return ret;
 }
@@ -226,7 +228,7 @@ static int si9531x_clkout_enable(struct clk_hw *hw)
 			clkdata->reg, \
 			clkdata->status);
 
-	clkout_enable_disable(clkdata->data->client, clkdata->reg, ON);
+	clkout_enable_disable(clkdata->data, clkdata->reg, ON);
 	return SUCCESS;
 }
 
@@ -240,7 +242,7 @@ static void si9531x_clkout_disable(struct clk_hw *hw)
 			clkdata->reg, \
 			clkdata->status);
 
-	clkout_enable_disable(clkdata->data->client, clkdata->reg, OFF);
+	clkout_enable_disable(clkdata->data, clkdata->reg, OFF);
 	return;
 }
 
@@ -341,7 +343,7 @@ long siIoctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				return -EFAULT;
 			}
 
-			ret = clkout_enable_disable(client, clkid, ON);
+			ret = clkout_enable_disable(g_brd, clkid, ON);
 			break;
 
 		case CLK_DISABLE:
@@ -350,7 +352,7 @@ long siIoctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				return -EFAULT;
 			}
 
-			ret = clkout_enable_disable(client, clkid, OFF);
+			ret = clkout_enable_disable(g_brd, clkid, OFF);
 			break;
 
 		case SET_FREQUENCY:
@@ -372,7 +374,7 @@ long siIoctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				pllid = PLLD;
 			}
 
-			ret = clkout_set_frequency(client, config.clkid, pllid, config.output_frequency);
+			ret = clkout_set_frequency(g_brd, config.clkid, pllid, config.output_frequency);
 			printk(KERN_ERR "set rate return for Output clk: %d\n", ret);
 
 			g_brd->output_clk[config.clkid].freq = ret;
@@ -386,7 +388,7 @@ long siIoctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				return -EFAULT;
 			}
 
-			ret = clkin_set_frequency(client, config.clkid, config.input_frequency, config.output_frequency);
+			ret = clkin_set_frequency(g_brd, config.clkid, config.input_frequency, config.output_frequency);
 			if (ret < 0) {
 				printk(KERN_ERR "Failed to set input frequency\n");
 				return ret;
@@ -407,7 +409,7 @@ long siIoctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			outclk_cfg.swing        = out_cfg.swing;
 			outclk_cfg.itresistor   = out_cfg.itresistor;
 
-			ret = clkout_set_linktype(client, out_cfg.clkid, &outclk_cfg); //call the function from where we read input registers
+			ret = clkout_set_linktype(g_brd, out_cfg.clkid, &outclk_cfg); //call the function from where we read input registers
 			if (ret < 0) {
 				printk(KERN_ERR "Failed to configure output clock ID: %d\n", config.clkid);
 				return ret;
@@ -489,7 +491,7 @@ static int CreateCharDevice(struct drv_si9531x *brd)
 		return ret;
 	}
 
-	brd->siT_cl = class_create(THIS_MODULE, gDrvrName);
+	brd->siT_cl = class_create(gDrvrName);
 	if (!brd->siT_cl) {
 		cdev_del(brd->siT_cdev);
 		unregister_chrdev_region(brd->ldev_node, 1);
@@ -512,9 +514,9 @@ void print_clk_driver(struct drv_si9531x *brd)
 {
 	int index;
 
-	printk(KERN_INFO "brd->chip_id=%x No of inputs:%d No of Outputs:%d\n", brd->chip_id, brd->num_inputs, brd->num_outputs);
+	printk(KERN_INFO "brd->chip_id=%s, addr %x, No of inputs:%d No of Outputs:%d\n", brd->chip_info->chip_name, brd->client->addr, brd->chip_info->num_inputs, brd->chip_info->num_outputs);
 
-	for (index = 0; index < brd->num_inputs; ++index) {
+	for (index = 0; index < brd->chip_info->num_inputs; ++index) {
 		printk(KERN_INFO "Input Clk:%s :clk_Index : %d status:%d, linktype:%d, freq=%d accuracy=%d\n",\
 				brd->input_clk[index].clkName,	\
 				brd->input_clk[index].reg,	\
@@ -524,7 +526,7 @@ void print_clk_driver(struct drv_si9531x *brd)
 				brd->input_clk[index].accuracy);
 	}
 
-	for (index = 0; index < brd->num_outputs; ++index) {
+	for (index = 0; index < brd->chip_info->num_outputs; ++index) {
 		printk(KERN_INFO "Output clk:%s clk_Index : %d status:%d, linktype:%d, freq=%d accuracy=%d\n",\
 				brd->output_clk[index].clkName, \
 				brd->output_clk[index].reg, 	\
@@ -544,6 +546,7 @@ static int si9531x_dt_parse(struct drv_si9531x *brd)
 	const char *mainxtal_name;
 	const char *readmode = NULL;
 	const char *diffmode = NULL;
+	u32 clkout_name_count;
 
 	if (of_property_read_u32(np, "reg", &reg) < 0) {
 		return -EINVAL;
@@ -551,12 +554,12 @@ static int si9531x_dt_parse(struct drv_si9531x *brd)
 
 	printk(KERN_INFO "Reg value read from DTS: 0x%x \n", reg);
 
+	printk(KERN_INFO "Allocating %d input clocks\n", brd->chip_info->num_inputs);
+	printk(KERN_INFO "Allocating %d output clocks\n", brd->chip_info->num_outputs);
 	//Allocate structure element pointer memory
-	brd->input_clk 	= kzalloc( sizeof(struct si9531x_clk)*brd->num_inputs, GFP_KERNEL);
-	brd->output_clk = kzalloc(sizeof(struct si9531x_clk)*brd->num_outputs, GFP_KERNEL);
+	brd->input_clk 	= kzalloc(sizeof(struct si9531x_clk)*brd->chip_info->num_inputs, GFP_KERNEL);
+	brd->output_clk = kzalloc(sizeof(struct si9531x_clk)*brd->chip_info->num_outputs, GFP_KERNEL);
 	brd->xtal_clk 	= kzalloc(sizeof(struct si9531x_clk), GFP_KERNEL);
-	brd->clkin 	= kzalloc( sizeof(struct  clk *)*brd->num_inputs, GFP_KERNEL);
-	brd->clkout 	= kzalloc(sizeof(struct clk *)*brd->num_outputs, GFP_KERNEL);
 
 	num = of_property_match_string(np, "clock-names", "xtal");
 	if (num < 0) {
@@ -577,6 +580,8 @@ static int si9531x_dt_parse(struct drv_si9531x *brd)
 	brd->xtal_clk->clkName = (char *)xtal->name;
 	of_property_read_u32(xtal, "clock-frequency", &brd->xtal_clk->freq);
 	printk(KERN_INFO "DTS : child_name:%s   freq read:%d\n",  brd->xtal_clk->clkName, brd->xtal_clk->freq);
+
+	clkout_name_count = of_property_count_strings(np, "clock-output-names");
 
 	if (of_property_match_string(np, "eeprom-override", "yes") == 0) {
 		brd->eeprom_override = ON;
@@ -619,6 +624,7 @@ static int si9531x_dt_parse(struct drv_si9531x *brd)
 				brd->input_clk[index].mode = AC;		//set AC as default
 			}
 
+			// TODO This assigname is wrong
 			if (of_property_match_string(child, "linkmode", "N") == 0) {
 				brd->input_clk[index].difflinktype = N_TYPE;
 			} else {
@@ -661,7 +667,10 @@ static int si9531x_dt_parse(struct drv_si9531x *brd)
 			}
 
 			brd->output_clk[index].reg = index;
-			brd->output_clk[index].clkName = (char *)child->name;
+			if (index < clkout_name_count)
+			    of_property_read_string_index(np, "clock-output-names", index, &brd->output_clk[index].clkName);
+			else
+				brd->output_clk[index].clkName = (char *)child->name;
 
 			if (of_property_read_u32(child, "clock-frequency", &brd->output_clk[index].freq) < 0) {
 				printk(KERN_INFO "DTS : %s: Clock freq not set \n", child->name);
@@ -886,8 +895,10 @@ static int clkin_enable_disable(struct i2c_client *client, int clkid, bool is_en
 	return SUCCESS;
 }
 
-static bool clkout_is_enable_disable(struct i2c_client *client, int clkid, bool is_enabled, unsigned int* value)
+static bool clkout_is_enable_disable(struct drv_si9531x *clkdata, int clkid, bool is_enabled, unsigned int* value)
 {
+	const struct siT9531x_device *chip_info = clkdata->chip_info;
+	struct i2c_client *client = clkdata->client;
 	unsigned int reg_address;
 	bool ret;
 
@@ -910,7 +921,7 @@ static bool clkout_is_enable_disable(struct i2c_client *client, int clkid, bool 
 		return -EIO;
 	}
 
-	if (!(( *value & clkout_regvalue[clkid]) ^ clkout_regvalue[clkid])) {
+	if (!((*value & (1 << chip_info->clkout_map[clkid])) ^ (1 << chip_info->clkout_map[clkid]))) {
 		ret = ON;
 	} else {
 		ret = OFF;	
@@ -920,26 +931,28 @@ static bool clkout_is_enable_disable(struct i2c_client *client, int clkid, bool 
 	return ret;
 }
 
-static int clkout_enable_disable(struct i2c_client *client, int clkid, bool is_enabled)
+static int clkout_enable_disable(struct drv_si9531x *clkdata, int clkid, bool is_enabled)
 {
+	struct i2c_client *client = clkdata->client;
 	int ret = SUCCESS;
 	unsigned int value = 0;
 	unsigned int reg_address = 0;
+	const struct siT9531x_device *chip_info = clkdata->chip_info;
 
-	printk(KERN_INFO "is_enabled :%d clkid:%d clkout_regvalue: %d \n", is_enabled, clkid, clkout_regvalue[clkid]);
+    printk(KERN_INFO "is_enabled :%d clkid:%d clkout_regvalue: %d \n", is_enabled, clkid, (1 << chip_info->clkout_map[clkid]));
 
-	if (clkid < 5) {
+	if (chip_info->clkout_map[clkid] < 8) {
 		reg_address = OUTPUT_REG1;
 	} else {
 		reg_address = OUTPUT_REG2;
 	}
 
-	ret = clkout_is_enable_disable(client, clkid, is_enabled, &value);
+	ret = clkout_is_enable_disable(clkdata, clkid, is_enabled, &value);
 
 	if (is_enabled) {
-		value = value | clkout_regvalue[clkid];		// set bit of reg by clk_id
+        value = value | (1 << chip_info->clkout_map[clkid]);        // set bit of reg by clk_id
 	} else { 
-		value = value & (~clkout_regvalue[clkid]); 		// set bit of reg by clk_id
+        value = value & (~(1 <<chip_info->clkout_map[clkid]));      // set bit of reg by clk_id
 	}
 
 	/* unlock debug registers for writing */
@@ -977,8 +990,10 @@ static int clkout_enable_disable(struct i2c_client *client, int clkid, bool is_e
 	return SUCCESS;
 }
 
-static int clkout_set_frequency(struct i2c_client *client, int clkid,int pllid, unsigned int frequency)
+static int clkout_set_frequency(struct drv_si9531x *clkdata, int clkid,int pllid, unsigned int frequency)
 {
+	const struct siT9531x_device *chip_info = clkdata->chip_info;
+	struct i2c_client *client = clkdata->client;
 	unsigned int FIXED_POINT_PRECISION_VALUE = 1000;
 	unsigned int page_num = 0;
 	unsigned int reg_address = 0;
@@ -988,8 +1003,6 @@ static int clkout_set_frequency(struct i2c_client *client, int clkid,int pllid, 
 	u64 vco_freq_band;
 	u64 DIVO;  // Use DIVO for the output divider
 	u64 divo_temp;
-
-	static const unsigned int siT95317Output2siT95316RegMap[] = {0, 3, 4, 5, 7, 8, 9, 11};
 
 	/* Set page to MAIN OUTSYS (Page3_Outsys) */
 	if (i2c_smbus_write_byte_data(client, SI95317_PAGE_NUM, Page3_Outsys) < 0) {
@@ -1010,11 +1023,12 @@ static int clkout_set_frequency(struct i2c_client *client, int clkid,int pllid, 
 	}
 
 	/* Switch to page 4 if output clock id is greater than 5 */
-	if (siT95317Output2siT95316RegMap[clkid] > 5) {
+	if (chip_info->clkout_map[clkid] > 5) {
 		if (i2c_smbus_write_byte_data(client, SI95317_PAGE_NUM, Page4_Outsys) < 0) {
 			printk(KERN_INFO "I2C_Write Error: output clk enable failed\n");
 			return -EIO;
 		}
+		page_num = 4;
 	}
 
 	if (( pllid == PLLB ) || ( pllid == PLLD )) {
@@ -1039,10 +1053,10 @@ static int clkout_set_frequency(struct i2c_client *client, int clkid,int pllid, 
 	ODRx_DIV[1] = (DIVO >> 8) & 0xff;
 	ODRx_DIV[0] = (DIVO >> 0) & 0xff;
 
-	reg_address = clkout_odr_divn_regvalue[siT95317Output2siT95316RegMap[clkid] % 6];
+	reg_address = clkout_odr_divn_regvalue[chip_info->clkout_map[clkid] % 6];
 
 	/* Read the existing value for the high byte of the divider */
-	div4reg_value = i2c_smbus_read_byte_data(client, reg_address + 4);
+	div4reg_value = i2c_smbus_read_byte_data(client, reg_address - 4);
 	if (div4reg_value < 0) {
 		printk(KERN_ERR "Failed to read byte via SMBus\n");
 		return -EIO;
@@ -1565,8 +1579,9 @@ static int set_accuracy(struct i2c_client *client, unsigned int accuracy)
 	return SUCCESS;
 }
 
-static int clkin_set_frequency(struct i2c_client *client, int clkid, unsigned int input_frequency, unsigned int output_frequency)
+static int clkin_set_frequency(struct drv_si9531x *clkdata, int clkid, unsigned int input_frequency, unsigned int output_frequency)
 {
+	struct i2c_client *client = clkdata->client;
 	int ret = 0, pllid = 0;
 	u16 divn1_value = 0;
 	u64 Fin = 0;
@@ -1589,7 +1604,7 @@ static int clkin_set_frequency(struct i2c_client *client, int clkid, unsigned in
 
 	divn1_value = calculate_divn1(input_frequency);
 	write_divn1_to_registers(client, pllid, divn1_value);
-	clkout_set_frequency(client, clkid, pllid, output_frequency);
+	clkout_set_frequency(clkdata, clkid, pllid, output_frequency);
 
 	divn = calculate_divn(g_brd->xtal_clk->freq, g_Fvco);
 	write_divn_to_registers(client, pllid, &divn);
@@ -1727,6 +1742,7 @@ static int validate_outputclkid_range(unsigned int out_clkid, unsigned int max_S
 	return SUCCESS;
 }
 
+#if 0
 static int validate_normalbw_range(unsigned int normalbw_val)
 {
 	if ((normalbw_val < PLL_NORMAL_FAST_BW_MIN) && (normalbw_val > PLL_NORMAL_FAST_BW_MAX)) {
@@ -1774,6 +1790,7 @@ static int validate_fastbw(unsigned int fastbw_val,unsigned int fin_pll)
 	}
 	return SUCCESS;
 }
+#endif
 
 static int configure_clk(struct drv_si9531x *brd)
 {
@@ -1784,7 +1801,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	struct inclk_linkcfg incfg;
 	struct outclk_linkcfg outcfg;
 
-	static const unsigned int siT95317Output2siT95316RegMap[] = {0, 3, 4, 5, 7, 8, 9, 11};
+	//TODO fix this section
 	static const int clocktobitmapping[] ={3,2,1,0};
 	static const int pllcd_reg28_clkbitmap[] ={7,6,5,4,3,2,1,0};
 	u8 reg27_value[4]={0};
@@ -1801,8 +1818,8 @@ static int configure_clk(struct drv_si9531x *brd)
 
 	// validate input clocks
 	printk(KERN_INFO "validating input clocks...\n");
-	for (i = 0; i < brd->num_inputs; ++i) {
-		ret = validate_inputclkid_range(brd->input_clk[i].reg, brd->num_inputs);
+	for (i = 0; i < brd->chip_info->num_inputs; ++i) {
+		ret = validate_inputclkid_range(brd->input_clk[i].reg, brd->chip_info->num_inputs);
 		if (ret < 0) {
 			printk(KERN_INFO "Input clock ID  not in range. %d", brd->input_clk[i].reg);
 		}
@@ -1820,8 +1837,8 @@ static int configure_clk(struct drv_si9531x *brd)
 
 	//validate output clocks
 	printk(KERN_INFO "validating output clocks...\n");
-	for (j = 0; j < brd->num_outputs; ++j) {
-		ret = validate_outputclkid_range(brd->output_clk[j].reg, brd->num_outputs);
+	for (j = 0; j < brd->chip_info->num_outputs; ++j) {
+		ret = validate_outputclkid_range(brd->output_clk[j].reg, brd->chip_info->num_outputs);
 		if (ret < 0) {
 			printk(KERN_INFO "Output clkid failed for %s is %d", \
 					brd->output_clk[j].clkName, \
@@ -1844,7 +1861,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	printk(KERN_INFO "output clock validation done\n");
 
 	// Input clock link settings & en/dis
-	for (i = 0; i < brd->num_inputs; ++i) {
+	for (i = 0; i < brd->chip_info->num_inputs; ++i) {
 		if (brd->input_clk[i].status) {     
 			incfg.linktype     = brd->input_clk[i].linktype;
 			incfg.difflinktype = brd->input_clk[i].difflinktype;
@@ -1863,7 +1880,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	printk(KERN_INFO "input clock link settings done\n");
 
 	// Output clock link settings & en/dis
-	for (j = 0; j < brd->num_outputs; ++j) {
+	for (j = 0; j < brd->chip_info->num_outputs; ++j) {
 		if (brd->output_clk[j].status) {
 			outcfg.linktype = brd->output_clk[j].linktype;
 			outcfg.difflinktype = brd->output_clk[j].difflinktype;
@@ -1871,13 +1888,13 @@ static int configure_clk(struct drv_si9531x *brd)
 			outcfg.swing    = brd->output_clk[j].swingvoltage;
 			outcfg.itresistor = brd->output_clk[j].terminationreg;
 
-			ret = clkout_set_linktype(brd->client, j, &outcfg);
+			ret = clkout_set_linktype(brd, j, &outcfg);
 			if (ret) {
 				return ret;
 			}
 		}
 
-		ret = clkout_enable_disable(brd->client, j, brd->output_clk[j].status);
+		ret = clkout_enable_disable(brd, j, brd->output_clk[j].status);
 		if (ret) {
 			return ret;
 		}
@@ -1885,7 +1902,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	printk(KERN_INFO "output clock link settings done\n");
 
 	//set input dividers
-	for (i = 0; i < brd->num_inputs; ++i)
+	for (i = 0; i < brd->chip_info->num_inputs; ++i)
 	{
 		if(brd->input_clk[i].status) {
 			divn1_value = calculate_divn1(brd->input_clk[i].freq);
@@ -1898,7 +1915,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	}
 
 	// set output frequency
-	for (j = 0; j < brd->num_outputs; ++j) {
+	for (j = 0; j < brd->chip_info->num_outputs; ++j) {
 		if(brd->output_clk[j].status) { 
 			if(brd->output_clk[j].pllA == 1) {
 				pllid = PLLA;
@@ -1912,7 +1929,7 @@ static int configure_clk(struct drv_si9531x *brd)
 			printk(KERN_INFO "PLL for clkout %d is PLL%c\n", j, 65 + pllid);
 
 			// Mapping is done as we are referencing sit95316 RegisterMap
-			sit95316clkid = siT95317Output2siT95316RegMap[j];
+			sit95316clkid = brd->chip_info->clkout_map[j];
 
 			if ((pllid == PLLA) || (pllid == PLLB)) {
 				if(sit95316clkid > 7) {
@@ -1929,7 +1946,7 @@ static int configure_clk(struct drv_si9531x *brd)
 			}
 
 			//set output frequency
-			clkout_set_frequency(brd->client, j, pllid, brd->output_clk[j].freq);
+			clkout_set_frequency(brd, j, pllid, brd->output_clk[j].freq);
 		}
 	}
 
@@ -1938,7 +1955,7 @@ static int configure_clk(struct drv_si9531x *brd)
 	}
 
 	// set accuracy
-	for (i = 0; i < brd->num_inputs; ++i) {
+	for (i = 0; i < brd->chip_info->num_inputs; ++i) {
 		ret = set_fast_frequency(brd->client, brd->input_clk[i].freq);
 		if (ret < 0) {
 			printk(KERN_ERR "Failed to set fast lock bandwidth\n");
@@ -2083,7 +2100,7 @@ static int set_inputmode(struct i2c_client *client,int clkid, unsigned int linkt
 }
 
 
-static int clkout_set_linktype(struct i2c_client *client, int clkid, const struct outclk_linkcfg* clockout_linkinfo)
+static int clkout_set_linktype(struct drv_si9531x *clkdata, int clkid, const struct outclk_linkcfg* clockout_linkinfo)
 {
 	/*  Link Info  */
 	unsigned int linktype     = clockout_linkinfo->linktype;
@@ -2105,19 +2122,19 @@ static int clkout_set_linktype(struct i2c_client *client, int clkid, const struc
 		difflinktype = CMOS_OUTP_NO_OUTN; //default cmos on outP,nothing on outN
 	}
 
-	set_outputlinktype(client, clkid, difflinktype);
+	set_outputlinktype(clkdata, clkid, difflinktype);
 
 	if (linktype == DIFFERENTIAL) {// differential linktype
-		set_differential_mode(client, clkid, mode, itresistor);
-		set_swing_voltage(client, clkid, swing);
+		set_differential_mode(clkdata, clkid, mode, itresistor);
+		set_swing_voltage(clkdata, clkid, swing);
 	}
 
 	return SUCCESS;
 }
 
-static int set_outputlinktype(struct i2c_client *client, int clkid, unsigned int linktype)
+static int set_outputlinktype(struct drv_si9531x *clkdata, int clkid, unsigned int linktype)
 {
-	static const unsigned int siT95317Output2siT95316RegMap[] = {0, 3, 4, 5, 7, 8, 9, 11};
+	struct i2c_client *client = clkdata->client;
 	static const unsigned int clkout_odr_conf_regvalue[] = { 0x1E, 0x2E, 0x3E, 0x4E, 0x5E, 0x6E};
 
 	unsigned int reg_address = 0;
@@ -2132,7 +2149,7 @@ static int set_outputlinktype(struct i2c_client *client, int clkid, unsigned int
 	}
 
 	/* Switch to page 4 if output clock id is greater than 5 */
-	if (siT95317Output2siT95316RegMap[clkid] > 5) {
+	if (clkdata->chip_info->clkout_map[clkid] > 5) {
 		if (i2c_smbus_write_byte_data(client, SI95317_PAGE_NUM, Page4_Outsys) < 0) {
 			printk(KERN_INFO "I2C_Write Error: switch to Page4_Outsys failed\n");
 			return -EIO;
@@ -2140,7 +2157,7 @@ static int set_outputlinktype(struct i2c_client *client, int clkid, unsigned int
 	}
 
 	/* Register map for different output clocks */
-	reg_address = clkout_odr_conf_regvalue[siT95317Output2siT95316RegMap[clkid] % 6];
+	reg_address = clkout_odr_conf_regvalue[clkdata->chip_info->clkout_map[clkid] % 6];
 
 	linkreg_value = i2c_smbus_read_byte_data(client, reg_address);
 	if (linkreg_value < 0) {
@@ -2172,9 +2189,9 @@ static int set_outputlinktype(struct i2c_client *client, int clkid, unsigned int
 	return SUCCESS;
 }
 
-static int set_differential_mode(struct i2c_client *client, int clkid,unsigned int mode,unsigned int itresistor)
+static int set_differential_mode(struct drv_si9531x *clkdata, int clkid,unsigned int mode,unsigned int itresistor)
 {
-	static const unsigned int siT95317Output2siT95316RegMap[] = {0, 3, 4, 5, 7, 8, 9, 11};
+	struct i2c_client *client = clkdata->client;
 	static const unsigned int clkout_odr_drvmode_regvalue[] = { 0x1C, 0x2C, 0x3C, 0x4C, 0x5C, 0x6C};
 	static const unsigned int clkout_odr_inttermres_regvalue[] = { 0x10, 0x20, 0x30, 0x40, 0x50, 0x60}; 
 
@@ -2190,14 +2207,14 @@ static int set_differential_mode(struct i2c_client *client, int clkid,unsigned i
 	}
 
 	/* Switch to page 4 if output clock id is greater than 5 */
-	if (siT95317Output2siT95316RegMap[clkid] > 5) {
+	if (clkdata->chip_info->clkout_map[clkid] > 5) {
 		if (i2c_smbus_write_byte_data(client, SI95317_PAGE_NUM, Page4_Outsys) < 0) {
 			printk(KERN_INFO "I2C_Write Error: switch to Page4_Outsys failed\n");
 			return -EIO;
 		}
 	}
 
-	reg_address = clkout_odr_drvmode_regvalue[siT95317Output2siT95316RegMap[clkid] % 6];
+	reg_address = clkout_odr_drvmode_regvalue[clkdata->chip_info->clkout_map[clkid] % 6];
 
 	linkreg_value = i2c_smbus_read_byte_data(client, reg_address);
 	if (linkreg_value < 0) {
@@ -2213,7 +2230,7 @@ static int set_differential_mode(struct i2c_client *client, int clkid,unsigned i
 	}
 
 	if (mode == 0) {// LVDS
-		reg_address = clkout_odr_inttermres_regvalue[siT95317Output2siT95316RegMap[clkid] % 6];
+		reg_address = clkout_odr_inttermres_regvalue[clkdata->chip_info->clkout_map[clkid] % 6];
 
 		linkreg_value = i2c_smbus_read_byte_data(client, reg_address);
 		if (linkreg_value < 0) {
@@ -2248,10 +2265,10 @@ static int set_differential_mode(struct i2c_client *client, int clkid,unsigned i
 	return SUCCESS;	
 }
 
-static int set_swing_voltage(struct i2c_client *client, int clkid, unsigned int swing)
+static int set_swing_voltage(struct drv_si9531x *clkdata, int clkid, unsigned int swing)
 {
+	struct i2c_client *client = clkdata->client;
 	/* Nyz : Move it to header file */
-	static const unsigned int siT95317Output2siT95316RegMap[] = {0, 3, 4, 5, 7, 8, 9, 11};
 	static const unsigned int clkout_odr_outswing_regvalue[] = { 0x1F, 0x2F, 0x3F, 0x4F, 0x5F, 0x6F};
 
 	unsigned int reg_address = 0;
@@ -2266,14 +2283,14 @@ static int set_swing_voltage(struct i2c_client *client, int clkid, unsigned int 
 	}
 
 	/* Switch to page 4 if output clock id is greater than 5 */
-	if (siT95317Output2siT95316RegMap[clkid] > 5) {
+	if (clkdata->chip_info->clkout_map[clkid] > 5) {
 		if (i2c_smbus_write_byte_data(client, SI95317_PAGE_NUM, Page4_Outsys) < 0) {
 			printk(KERN_INFO "I2C_Write Error: switch to Page4_Outsys failed\n");
 			return -EIO;
 		}
 	}
 
-	reg_address = clkout_odr_outswing_regvalue[siT95317Output2siT95316RegMap[clkid] % 6];
+	reg_address = clkout_odr_outswing_regvalue[clkdata->chip_info->clkout_map[clkid] % 6];
 
 	linkreg_value = i2c_smbus_read_byte_data(client, reg_address);
 	if (linkreg_value < 0) {
@@ -2374,10 +2391,12 @@ static int write_outclk_pll_bits(struct i2c_client *client, unsigned int pllid, 
 }
 
 
-static int write_default_configuration(u16 chip_id)
+static int write_default_configuration(const struct siT9531x_device * chip_info)
 {
 	int ret = 0;
 
+	//TODO Fix this
+	/*
 	switch(chip_id)
 	{
 		case SIT95316 :
@@ -2390,14 +2409,24 @@ static int write_default_configuration(u16 chip_id)
 		default:
 			ret = FAILED ;
 	};
+	*/
 
 	return ret;
 }
 
-static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+static struct clk_hw *si95317_of_clk_get(struct of_phandle_args *clkspec, void *data)
 {
+	struct drv_si9531x *brd = data;
+	unsigned int idx = clkspec->args[0];
 
+	if (idx >= brd->chip_info->num_outputs)
+		return ERR_PTR(-EINVAL);
 
+	return &brd->output_clk[idx].hw;
+}
+
+static int si9531x_i2c_probe(struct i2c_client *client)
+{
 	int ret = SUCCESS;
 	int err = 0;
 	struct drv_si9531x *brd = NULL;
@@ -2405,38 +2434,16 @@ static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	int i, j;
 
 
-	printk(KERN_INFO "Probed device :%ld Device name chip_id detected:0x%x\n", id->driver_data, client->addr);
-
 	memset(&init, 0, sizeof(init));
 
 	brd = devm_kzalloc(&client->dev, sizeof(*brd), GFP_KERNEL);
 
 	brd->client = client;
-	brd->chip_id = client->addr;
-
-	switch(brd->chip_id)
-	{
-		case SIT95316:
-			brd->chip_name   = device_support[0].chip_name;
-			brd->num_inputs  = device_support[0].num_inputs;
-			brd->num_outputs = device_support[0].num_outputs;
-			break;
-
-		case SIT95317:
-			brd->chip_name   = device_support[1].chip_name;
-			brd->num_inputs  = device_support[1].num_inputs;
-			brd->num_outputs = device_support[1].num_outputs;
-			break;
-
-		case SIT95211:
-			brd->chip_name  = device_support[2].chip_name;
-			brd->num_inputs = device_support[2].num_inputs;
-			brd->num_outputs= device_support[2].num_outputs;
-			break;
-
-		default: printk(KERN_ERR "UnSuported Chip Identified %x\n", brd->chip_id);
-			 return FAILED;
-	}
+	brd->chip_info = i2c_get_match_data(client);
+	printk(KERN_INFO "Probed device : Device name %s detected:0x%x\n", brd->chip_info->chip_name, client->addr);
+	printk(KERN_INFO "chip_info %p\n", brd->chip_info);
+	if (brd->chip_info == NULL)
+		return -1;
 
 	ret = si9531x_dt_parse(brd);
 	if (ret) {
@@ -2448,32 +2455,25 @@ static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	g_brd = brd;
 
 	/* Register Input Clocks */
-	for (i = 0; i < brd->num_inputs; i++) {
+	for (i = 0; i < brd->chip_info->num_inputs; i++) {
 		init.name = si9531x_input_names[i];
 		init.ops = &si9531x_input_clk_ops;
 		brd->input_clk[i].hw.init = &init;
 		brd->input_clk[i].data = brd;
-		brd->clkin[i] = devm_clk_register(&client->dev, &brd->input_clk[i].hw);
-		if (IS_ERR(brd->clkin[i])) {
+		ret = devm_clk_hw_register(&client->dev, &brd->input_clk[i].hw);
+		if (ret) {
 			printk(KERN_ERR "failed clk register ops for Input clk : %d\n", i);
 			return ret;
-		}
-
-		err = devm_of_clk_add_hw_provider(&client->dev, of_clk_hw_simple_get,
-				&brd->input_clk[i].hw);
-		if (err) {
-			printk(KERN_ERR "unable to add clk provider\n");
-			return err;
 		}
 	}
 
 	/* Register Output Clocks */
-	for (j = 0; j < brd->num_outputs; j++) {
+	for (j = 0; j < brd->chip_info->num_outputs; j++) {
 		// Reset init structure for each clock
 		memset(&init, 0, sizeof(init));
 
 		// Set the name and ops for the output clock
-		init.name = si9531x_output_names[j];
+		init.name = brd->output_clk[j].clkName;
 		init.ops = &si9531x_output_clk_ops;
 		init.flags = CLK_SET_RATE_PARENT | CLK_GET_RATE_NOCACHE;  
 
@@ -2483,23 +2483,22 @@ static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 		brd->output_clk[j].data = brd;
 
 		// Register the clock
-		brd->clkout[j] = devm_clk_register(&client->dev, &brd->output_clk[j].hw);
-		if (IS_ERR(brd->clkout[j])) {
+		ret = devm_clk_hw_register(&client->dev, &brd->output_clk[j].hw);
+		if (ret) {
 			printk(KERN_ERR "Failed clk register ops for Output clk: %d\n", j);
-			return PTR_ERR(brd->clkout[j]); // Proper error return
-		}
-
-		// Add the clock to the clock provider
-		err = devm_of_clk_add_hw_provider(&client->dev, of_clk_hw_simple_get, &brd->output_clk[j].hw);
-		if (err) {
-			printk(KERN_ERR "Unable to add clk provider for Output clk: %d\n", j);
-			return err;
+			return ret;
 		}
 	}
 
+	// Add the clock to the clock provider
+	err = of_clk_add_hw_provider(client->dev.of_node, si95317_of_clk_get, brd);
+	if (err) {
+	   printk(KERN_ERR "Unable to add clk provider for Output clk: %d\n", j);
+	   return err;
+	}
 
 	if (brd->eeprom_override == ON) {
-		err = write_default_configuration(brd->chip_id);
+		err = write_default_configuration(brd->chip_info);
 		if (ret < 0) {
 			printk(KERN_INFO "Default Registration Write reg failed\n");
 		}
@@ -2513,9 +2512,9 @@ static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 		//Need to add print here
 	}
 
-	ret = configure_sysfs_outputclk(brd->chip_id);
+	ret = configure_sysfs_outputclk(brd->chip_info->chip_name);
 	if (ret) {
-		printk(KERN_ERR "Failed to configure output clk sysfs for chipID :%x\n", brd->chip_id);
+		printk(KERN_ERR "Failed to configure output clk sysfs for chipID :%s\n", brd->chip_info->chip_name);
 	}
 
 	ret = CreateCharDevice(brd);
@@ -2529,7 +2528,7 @@ static int si9531x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	return 0;
 }
 
-static int si9531x_i2c_remove(struct i2c_client *client)
+static void si9531x_i2c_remove(struct i2c_client *client)
 {
 	struct drv_si9531x *brd = NULL;
 
@@ -2540,21 +2539,50 @@ static int si9531x_i2c_remove(struct i2c_client *client)
 	class_destroy(brd->siT_cl);
 	cdev_del(brd->siT_cdev);
 	unregister_chrdev_region(brd->ldev_node, 1);
-	return 0;
 }
 
+static const struct siT9531x_device sit95314 = {
+    .num_inputs  = SI95314_MAX_NUM_INPUTS,
+    .num_outputs = SI95314_MAX_NUM_OUTPUTS,
+    .clkout_map  = clkout_map95314,
+    .chip_name   = "SiT95314",
+  };
+
+static const struct siT9531x_device sit95316 = {
+    .num_inputs  = SI95316_MAX_NUM_INPUTS,
+    .num_outputs = SI95316_MAX_NUM_OUTPUTS,
+    .clkout_map  = clkout_map95316,
+    .chip_name   = "SiT95316",
+  };
+
+static const struct siT9531x_device sit95317 = {
+    .num_inputs  = SI95317_MAX_NUM_INPUTS,
+    .num_outputs = SI95317_MAX_NUM_OUTPUTS,
+    .clkout_map  = clkout_map95317,
+    .chip_name   = "SiT95317",
+  };
+
+static const struct siT9531x_device sit95211 = {
+    .num_inputs  = SI95211_MAX_NUM_INPUTS,
+    .num_outputs = SI95211_MAX_NUM_OUTPUTS,
+    .clkout_map  = clkout_map95211,
+    .chip_name   = "SiT95211",
+  };
+
 static const struct i2c_device_id si9531x_i2c_id[] = {
-	{"siT95316", 0},					//Need to check here for i2c address.
-	{"siT95317", 1},					//Need to check here for i2c address.
-	{"siT95211", 2},					//Need to check here for i2c address.
-	{ }
+    {"sit95314", .driver_data = (kernel_ulong_t)&sit95314},
+    {"sit95316", .driver_data = (kernel_ulong_t)&sit95316},
+    {"sit95317", .driver_data = (kernel_ulong_t)&sit95317},
+    {"sit95211", .driver_data = (kernel_ulong_t)&sit95211},
+    { }
 };
 
 MODULE_DEVICE_TABLE(i2c, si9531x_i2c_id);
 
 static const struct of_device_id si9531x_dt_id[] = {
-	{ .compatible = "SiTime,siT95316" },
-	{ .compatible = "siTime,siT95317" },
+	{ .compatible = "sitime,sit95314" },
+	{ .compatible = "sitime,sit95316" },
+	{ .compatible = "sitime,sit95317" },
 	{ .compatible = "sitime,sit95211" },
 	{ }
 };

@@ -25,9 +25,11 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/fs.h>
-#include <stdbool.h>
 #include <linux/uaccess.h>
 #include <linux/ioctl.h>
+
+#define SI95314_MAX_NUM_INPUTS         	4
+#define SI95314_MAX_NUM_OUTPUTS     	4
 
 #define SI95316_MAX_NUM_INPUTS         	8
 #define SI95316_MAX_NUM_OUTPUTS     	12
@@ -176,13 +178,6 @@ enum		//clock status : Disabled/Enabled
 	ON
 };
 
-enum 
-{
-	SIT95316 = 0x5f,
-	SIT95317 = 0x6d,
-	SIT95211=0x69
-};
-
 enum {
 	PPM_100 = 1,                
 	PPM_200,
@@ -261,9 +256,9 @@ static const struct freq_range freq_table[] = {
 };
 
 struct siT9531x_device {
-	u8 chip_id;
 	u8 num_inputs;
 	u8 num_outputs;
+	const u8 *clkout_map;
 	char *chip_name;
 };
 
@@ -319,12 +314,13 @@ struct input_clock_config{
 };
 
 
+static const u8 clkout_map95314[] = {0, 1, 2, 3};
+static const u8 clkout_map95316[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+static const u8 clkout_map95317[] = {0, 3, 4, 5, 7, 8, 9, 11};
+static const u8 clkout_map95211[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
 static const char * const si9531x_input_names[] = {
 	"clkin0", "clkin1", "clkin2", "clkin3", "xtal"
-};
-
-static const char * const si9531x_output_names[] = {
-	"clkout0", "clkout1", "clkout2", "clkout3", "clkout4", "clkout5", "clkout6", "clkout7"
 };
 
 static const unsigned int clkout_regvalue[] = { 0x01, 0x08, 0x10, 0x20, 0x80, 0x01, 0x02, 0x08};
@@ -1850,7 +1846,7 @@ struct si9531x_clk
 	unsigned int reg;
 	unsigned int freq;
 	unsigned int accuracy ;
-	char * clkName;		
+	const char * clkName;		
 	struct clk_hw hw;
 	struct device_node *dn;
 	struct drv_si9531x *data;
@@ -1873,9 +1869,7 @@ struct freq_config {
 
 struct drv_si9531x {
 	bool    eeprom_override;
-	u8 	num_inputs;
-	u8 	num_outputs;
-	u16 	chip_id;
+	const struct siT9531x_device *chip_info;
 	u32     majorNum;
 	u32     minorNum;
 	char *	chip_name;
@@ -1887,6 +1881,4 @@ struct drv_si9531x {
 	struct 	si9531x_clk *output_clk;
 	struct 	cdev *siT_cdev;
 	struct 	class *siT_cl;
-	struct 	clk **clkin;
-	struct 	clk **clkout;
 };
