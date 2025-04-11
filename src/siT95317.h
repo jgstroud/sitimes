@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Driver for SiTime SiT95317/SiT95316
+ * Driver for SiTime Labs SiT95317/SiT95316
  * Copyright (C) 2024
- * Author: SiTime Corporation
+ * Author: Ali Rouhi
+ * 	   Serhiy Vlasenko
  *
  * The SiT95317 has 4 input & 8 output clocks.
  * The SiT95316 has 4 inputs & 16 output clocks.
@@ -34,28 +35,35 @@
 #define SI95317_MAX_NUM_INPUTS         	4
 #define SI95317_MAX_NUM_OUTPUTS     	8
 
+#define SI95211_MAX_NUM_INPUTS         	4
+#define SI95211_MAX_NUM_OUTPUTS     	12
+
 /* IOCTL */
-#define REG_WRITE     			_IOW('k', 1, struct ioctl_data)
-#define REG_READ      			_IOR('k', 2, struct ioctl_data)
-#define SEL_FREQ_PLAN 			_IOW('k', 3, unsigned int)
-#define CLK_ENABLE     			_IOW('k', 4, unsigned int)
-#define CLK_DISABLE    			_IOW('k', 5, unsigned int)
-#define SET_FREQUENCY 			_IOW('k', 9, struct freq_config)
-#define SET_INPUT_FREQ 			_IOW('k', 10, struct freq_config)
+#define REG_WRITE     				_IOW('k', 1, struct ioctl_data)
+#define REG_READ      				_IOR('k', 2, struct ioctl_data)
+#define SEL_FREQ_PLAN 				_IOW('k', 3, unsigned int)
+#define CLK_ENABLE     				_IOW('k', 4, unsigned int)
+#define CLK_DISABLE    				_IOW('k', 5, unsigned int)
+#define SET_FREQUENCY 				_IOW('k', 9, struct freq_config)
+#define SET_INPUT_FREQ 				_IOW('k', 10, struct freq_config)
+#define CONFIGURE_OUTPUT_CLOCK_LINK_TYPE 	_IOW('k', 11, struct output_clock_config)
+#define CONFIGURE_INPUT_CLOCK_LINK_TYPE 	_IOW('k', 12, struct input_clock_config)
+
+
 
 #define MAX_PLL_PHASE_DETECTOR_FREQ	12500000  // 12.5 MHz as maximum allowed frequency for PLL phase detector
-#define MIN_DIVN1 			1
-#define MAX_DIVN1 			65535
+#define MIN_DIVN1 					1
+#define MAX_DIVN1 					65535
 
-#define MAX_DIVIDER 			65535  
-#define MIN_DIVIDER 			1      
+#define MAX_DIVIDER 				65535
+#define MIN_DIVIDER 				1
 #define SIT9531x_PAGE             	0x0001
 
-#define FAST_LOCK_BW_RATIO 		100  // Fast lock bandwidth should be less than 1/100th of the input frequency
-#define TARGET_OUTPUT_FREQ 		156250000  // Target output frequency of 156.25 MHz
+#define FAST_LOCK_BW_RATIO 			100  // Fast lock bandwidth should be less than 1/100th of the input frequency
+#define TARGET_OUTPUT_FREQ 			156250000  // Target output frequency of 156.25 MHz
 
 //Input frequency Fin to PLL 10MHz
-#define FIN_PLL_FREQ_MAX 		10000000
+#define FIN_PLL_FREQ_MAX 			10000000
 
 // Minimum VCO frequency (4.9152 GHz)
 //datasheet suggests 4915.2 & 6875 MHz,But these values produce stable output
@@ -65,48 +73,59 @@
 #define REFERENCE_CLK_FREQUENCY 	38400000
 
 /*Xtal Frequency Range in 25MHz to 192MHz*/
-#define XTAL_FREQ_MIN 			25000000 
-#define XTAL_FREQ_MAX 			192000000 
+#define XTAL_FREQ_MIN 				25000000
+#define XTAL_FREQ_MAX 				192000000
 
 /*Doubler recommended Frequency range [35MHz,96MHz]*/
 #define DOUBLER_XTAL_FREQ_MIN 		35000000 
 #define DOUBLER_XTAL_FREQ_MAX 		96000000
 
 /*Signle Ended Input Frequency Range in 0.5Hz to 250MHz*/
-#define INPUT_SE_FREQ_MIN 		0.5
-#define INPUT_SE_FREQ_MAX 		250000000 
+#define INPUT_SE_FREQ_MIN 			0.5
+#define INPUT_SE_FREQ_MAX 			250000000 
 
 /*Single Ended Out Frequency Range in 0.5Hz to 250MHz*/
-#define OUTPUT_SE_FREQ_MIN 		0.5 
-#define OUTPUT_SE_FREQ_MAX 		250000000 
+#define OUTPUT_SE_FREQ_MIN 			0.5
+#define OUTPUT_SE_FREQ_MAX 			250000000 
 
-#define PLL_INPUT_FREQ_MIN 		0.5
-#define PLL_INPUT_FREQ_MAX 		12500000
+#define PLL_INPUT_FREQ_MIN 			0.5
+#define PLL_INPUT_FREQ_MAX 			12500000
 
-#define PLL_NORMAL_FAST_BW_MIN          0.00009
-#define PLL_NORMAL_FAST_BW_MAX          4000
+#define PLL_NORMAL_FAST_BW_MIN		0.00009
+#define PLL_NORMAL_FAST_BW_MAX		4000
 
 #define SIT95317_XO2_GENERIC_REG 	0x2D
 
-#define SI95317_PAGE_NUM		0xFF
-#define SI95317_DEBUG_REG		0xBD
+#define SI95317_PAGE_NUM			0xFF
+#define SI95317_DEBUG_REG			0xBD
 #define SI95317_PRG_DIR_GEN_0		0x0F
 #define SI95317_INPUT_ENABLE		0x40
 
-#define SI95317_PROFILE_ID		0x0
-#define SI95317_VARIANT_ID		0x31
-#define SI95317_VERSION_ID		0xA3
-#define SI95317_DEVICE_ID		0x5F
+#define SI95317_PROFILE_ID			0x0
+#define SI95317_VARIANT_ID			0x31
+#define SI95317_VERSION_ID			0xA3
+#define SI95317_DEVICE_ID			0x5F
 #define SI95317_UNLOCK_DEBUG_REG	0xC3
-#define SI95317_LOOPLOCK		0x40
+#define SI95317_LOOPLOCK			0x40
 #define SI95317_PRGCMD_STATE		0x01
 #define SI95317_ACTIVE_STATE		0x00
-#define SI95317_UPDATE_NVM		0x10
+#define SI95317_UPDATE_NVM			0x10
+
+#define OUTPUT_REG1					0x25
+#define OUTPUT_REG2					0x24
+
+#define DIVN_REG_ADDRESS			0x30
+#define DIVN_REG_ADDRESS_NUM		0x32
+#define DIVN_REG_ADDRESS_DEN		0x38
+
+#define DIVN2_REG_ADDRESS			0x3E
+#define DIVN2_REG_ADDRESS_NUM		0x43
+#define DIVN2_REG_ADDRESS_DEN		0x49
+
+#define READ_EERPROM_REG_ADRESS 0x05
 
 #define to_drv_si9531x(_hw)      	container_of(_hw, struct drv_si9531x, hw)
 #define to_clk_si9531x_data(_hw)	container_of(_hw, struct si9531x_clk, hw)
-
-char gDrvrName[] = "SiT9531xDrv";
 
 // Select Page number for serial communication...
 enum SiT9531x{
@@ -117,15 +136,16 @@ enum SiT9531x{
 	Page4_Outsys 	= 0x04,
 	Page6_Clkmon 	= 0x06,
 	Page7_Clkmon 	= 0x07,
-	PageA_PLLA 	= 0x0A,
+	PageA_PLLA 		= 0x0A,
 	Page1A_PLLA 	= 0x1A,
-	PageB_PLLB 	= 0x0B,
-	Page1B_PLLB	= 0x1B,
-	PageC_PLLC	= 0x0C,
-	Page1C_PLLC	= 0x1C,
-	PageD_PLLD	= 0x0D,
-	Page1D_PLLD	= 0x1D
+	PageB_PLLB 		= 0x0B,
+	Page1B_PLLB		= 0x1B,
+	PageC_PLLC		= 0x0C,
+	Page1C_PLLC		= 0x1C,
+	PageD_PLLD		= 0x0D,
+	Page1D_PLLD		= 0x1D
 };
+
 
 enum {
 	FAILED  = -1,
@@ -158,29 +178,59 @@ enum		//clock status : Disabled/Enabled
 
 enum 
 {
-	SIT95316=0x5f,
-	SIT95317=0x6d
+	SIT95316 = 0x5f,
+	SIT95317 = 0x6d,
+	SIT95211=0x69
 };
 
 enum {
-	PPM_100=1,                //0
+	PPM_100 = 1,                
 	PPM_200,
 	PPM_300,
 	PPM_400,
-	PPM_500,                //4
+	PPM_500,                //5
 	PPM_600,
 	PPM_700,
 	PPM_800,
-	PPM_900,                //8
+	PPM_900,                //9
 	PPM_1000,
 	PPM_1100,
 	PPM_1200,
-	PPM_1300,               //12
+	PPM_1300,               //13
 	PPM_1400,
 	PPM_1500,
-	PPM_1600                //15
+	PPM_1600                //16
 };
 
+typedef enum {
+	PLLA,
+	PLLB,
+	PLLC,
+	PLLD
+}pll;
+
+typedef enum{
+	AC = 0,
+	DC,
+	LVDS = 0,
+	LVPECL,
+	CML,
+	HCSL
+}modetype;
+
+typedef enum{
+	EXT_TERM = 0,
+	INT_PULL_DN,
+	INT_PULL_UP,
+	CMOS_OUTP_NO_OUTN = 4,
+	NO_OUTP_CMOS_OUTN = 8,
+	CMOS_OUTP_CMOS_OUTN = 12
+}differentialType;
+
+typedef enum{
+	P_TYPE,
+	N_TYPE
+}linktype;
 // Structure to hold frequency range and corresponding register values
 struct freq_range {
 	unsigned int min_freq;     // Minimum frequency in Hz
@@ -217,11 +267,6 @@ struct siT9531x_device {
 	char *chip_name;
 };
 
-const struct siT9531x_device device_support[] = {
-	{ SIT95316, SI95316_MAX_NUM_INPUTS, SI95316_MAX_NUM_OUTPUTS,  "SiT95316"},
-	{ SIT95317, SI95317_MAX_NUM_INPUTS, SI95317_MAX_NUM_OUTPUTS, "SiT95317"},
-};	
-
 /* Static configuration (to be moved to firmware) */
 struct siT9531x_reg_cfg {
 	u8 address;
@@ -234,23 +279,58 @@ struct divider_data {
 	u64 fracd;
 };
 
+struct inclk_linkcfg {
+	u8 linktype;
+	u8 difflinktype;
+	u8 mode;
+};
+
+struct outclk_linkcfg {
+	u8 linktype;
+	u8 difflinktype;
+	u8 mode;
+	unsigned int swing;
+	u8 itresistor;
+};
+
+// For IOCTLs
+struct output_clock_config {
+	int clkid;
+	unsigned int pllA;
+	unsigned int pllB;
+	unsigned int pllC;
+	unsigned int pllD;
+	unsigned int linktype;
+	unsigned int difflinktype;
+	unsigned int mode;
+	unsigned int swing;
+	unsigned int itresistor;
+};
+
+struct input_clock_config{
+	int clkid;
+	unsigned int pllA;
+	unsigned int pllB;
+	unsigned int pllC;
+	unsigned int pllD;
+	unsigned int linktype;
+	unsigned int difflinktype;
+	unsigned int mode;
+};
+
+
 static const char * const si9531x_input_names[] = {
-	"clkin0","clkin1","clkin2","clkin3", "xtal"
+	"clkin0", "clkin1", "clkin2", "clkin3", "xtal"
 };
 
 static const char * const si9531x_output_names[] = {
-	"clkout0","clkout1","clkout2","clkout3","clkout4","clkout5","clkout6","clkout7"
+	"clkout0", "clkout1", "clkout2", "clkout3", "clkout4", "clkout5", "clkout6", "clkout7"
 };
 
 static const unsigned int clkout_regvalue[] = { 0x01, 0x08, 0x10, 0x20, 0x80, 0x01, 0x02, 0x08};
 
 /* Register map for different output clocks */
 static const unsigned int clkout_odr_divn_regvalue[] = { 0x14, 0x24, 0x34, 0x44, 0x54, 0x64};
-
-const struct siT9531x_reg_cfg chip_rst_cfg[] = {
-	{  0xfe, 0x01 },    // apply soft reset on chip
-	{  0xfe, 0x00 },    // disable reset
-};
 
 /** @Description - Def from sitime
  * xtal freq = 38.4 MHz 
@@ -268,6 +348,334 @@ const struct siT9531x_reg_cfg chip_rst_cfg[] = {
  *             3.3V @ 1Hz    OUT0
  * Used PLL = PLLA , PLLB, PLLC, PLLD
  */
+
+static const struct siT9531x_reg_cfg vek385_def[] = {
+	// Configure IO Supply Level
+	{ 0xFF, 0x00 },
+	{ 0xBD, 0xC3 },
+	{ 0x3A, 0x00 },
+	{ 0x0F, 0x10 },
+	{ 0x57, 0x01 },
+
+	// GENERIC : begin
+	{ 0xFF, 0x00 },
+	{ 0xBD, 0xC3 },
+	{ 0xEC, 0x00 },
+	{ 0x10, 0x04 },
+	{ 0x11, 0x08 },
+	{ 0x12, 0x09 },
+	{ 0x13, 0x00 },
+	{ 0x14, 0x06 },
+	{ 0x15, 0x03 },
+	{ 0x16, 0x05 },
+	{ 0x17, 0x00 },
+	{ 0x18, 0x10 },
+	{ 0x1A, 0x0F },
+	{ 0x1B, 0x0F },
+	{ 0x1C, 0x0F },
+	{ 0x1D, 0xCF },
+	{ 0x1E, 0xFB },
+	{ 0x1F, 0xCF },
+	{ 0x20, 0xFB },
+	{ 0x21, 0xBC },
+	{ 0x22, 0x8F },
+	{ 0x23, 0x43 },
+	{ 0x24, 0x06 },
+	{ 0x25, 0xF7 },
+	{ 0x27, 0x00 },
+	{ 0x28, 0x40 },
+	{ 0x29, 0x0D },
+	{ 0x2A, 0xFD },
+	{ 0x2C, 0xA2 },
+	{ 0x2D, 0x27 },
+	{ 0x2F, 0x00 },
+	{ 0x34, 0x6C },
+	{ 0x35, 0xFF },
+	{ 0x38, 0x80 },
+	{ 0x3C, 0xA0 },
+	{ 0x64, 0x08 },
+	{ 0xFF, 0x01 },
+	{ 0xBD, 0xC3 },
+	{ 0x10, 0x00 },
+	{ 0x11, 0x00 },
+	{ 0x12, 0x00 },
+	{ 0x13, 0xA8 },
+	{ 0x14, 0x04 },
+	{ 0x2E, 0x00 },
+	{ 0x2F, 0x01 },
+	{ 0x32, 0x00 },
+	{ 0x33, 0x00 },
+	{ 0x34, 0x00 },
+	{ 0x35, 0x00 },
+	{ 0x36, 0x00 },
+	{ 0x37, 0x00 },
+	{ 0x38, 0x00 },
+	{ 0x3C, 0x00 },
+	{ 0x42, 0x08 },
+	{ 0xFF, 0x00 },
+	{ 0x0F, 0x10 },
+
+	{ 0xE1, 0x7F },
+	{ 0xE0, 0x7F },
+
+	{ 0x0F, 0x40 },
+
+	{ 0xFF, 0x03 },
+	{ 0xBD, 0xC3 },
+	{ 0x14, 0x18 },
+	{ 0x15, 0x60 },
+	{ 0x19, 0x02 },
+	{ 0x1A, 0x17 },
+	{ 0x1C, 0x30 },
+	{ 0x1E, 0xA0 },
+	{ 0x1F, 0x04 },
+	{ 0x24, 0x18 },
+	{ 0x25, 0x60 },
+	{ 0x29, 0x02 },
+	{ 0x2A, 0x17 },
+	{ 0x2C, 0x30 },
+	{ 0x2E, 0xA0 },
+	{ 0x2F, 0x04 },
+	{ 0x34, 0x18 },
+	{ 0x35, 0x60 },
+	{ 0x39, 0x02 },
+	{ 0x3A, 0x17 },
+	{ 0x3C, 0x30 },
+	{ 0x3E, 0xA0 },
+	{ 0x3F, 0x04 },
+	{ 0x54, 0xBE },
+	{ 0x55, 0x40 },
+	{ 0x59, 0x02 },
+	{ 0x5A, 0x8F },
+	{ 0x5C, 0x20 },
+	{ 0x5E, 0x44 },
+	{ 0x64, 0x1C },
+	{ 0x65, 0x40 },
+	{ 0x69, 0x02 },
+	{ 0x6A, 0x8F },
+	{ 0x6C, 0x20 },
+	{ 0x6E, 0x44 },
+	{ 0xFF, 0x04 },
+	{ 0xBD, 0xC3 },
+	{ 0x14, 0xBE },
+	{ 0x15, 0x40 },
+	{ 0x19, 0x02 },
+	{ 0x1A, 0x8F },
+	{ 0x1C, 0x20 },
+	{ 0x1E, 0x44 },
+	{ 0x24, 0xBE },
+	{ 0x25, 0x40 },
+	{ 0x29, 0x02 },
+	{ 0x2A, 0x8F },
+	{ 0x2C, 0x20 },
+	{ 0x2E, 0x44 },
+	{ 0x2F, 0x60 },
+	{ 0x44, 0x10 },
+	{ 0x45, 0x60 },
+	{ 0x49, 0x02 },
+	{ 0x4A, 0x17 },
+	{ 0x4C, 0x30 },
+	{ 0x4E, 0xA0 },
+	{ 0x4F, 0x04 },
+	{ 0x54, 0x21 },
+	{ 0x55, 0x60 },
+	{ 0x59, 0x02 },
+	{ 0x5A, 0x17 },
+	{ 0x5C, 0x30 },
+	{ 0x5E, 0xA0 },
+	{ 0x5F, 0x04 },
+	{ 0xFF, 0x03 },
+	{ 0x0F, 0x10 },
+
+	{ 0x0F, 0x40 },
+	{ 0xFF, 0x0A },
+	{ 0xBD, 0xC3 },
+	{ 0x16, 0x3F },
+	{ 0x17, 0x02 },
+	{ 0x18, 0x2F },
+	{ 0x1B, 0x05 },
+	{ 0x1C, 0x04 },
+	{ 0x1D, 0x24 },
+	{ 0x1E, 0x40 },
+	{ 0x1F, 0x60 },
+	{ 0x22, 0x32 },
+	{ 0x23, 0x10 },
+	{ 0x26, 0x02 },
+	{ 0x27, 0x06 },
+	{ 0x29, 0x10 },
+	{ 0x2B, 0x66 },
+	{ 0x2C, 0x01 },
+	{ 0x2D, 0x18 },
+	{ 0x2F, 0x07 },
+	{ 0x30, 0x36 },
+	{ 0x31, 0x60 },
+	{ 0x32, 0x25 },
+	{ 0x35, 0xB6 },
+	{ 0x38, 0x7F },
+	{ 0x39, 0xFF },
+	{ 0x3A, 0xFF },
+	{ 0x3B, 0xFF },
+	{ 0x3C, 0xF8 },
+	{ 0x3D, 0x15 },
+	{ 0x42, 0xE8 },
+	{ 0x49, 0x01 },
+	{ 0x4D, 0xC0 },
+	{ 0x4E, 0x20 },
+	{ 0x57, 0x40 },
+	{ 0x7F, 0x40 },
+	{ 0xFF, 0x1A },
+	{ 0xBD, 0xC3 },
+	{ 0x2D, 0x02 },
+	{ 0x50, 0x08 },
+	{ 0x5C, 0x0F },
+	{ 0x5D, 0xFF },
+	{ 0x6C, 0xDD },
+	{ 0xFF, 0x0A },
+	{ 0x0F, 0x10 },
+
+	{ 0x0F, 0x40 },
+	{ 0xFF, 0x0B },
+	{ 0xBD, 0xC3 },
+	{ 0x16, 0x3F },
+	{ 0x17, 0x02 },
+	{ 0x18, 0x2F },
+	{ 0x1B, 0x05 },
+	{ 0x1C, 0x04 },
+	{ 0x1D, 0x24 },
+	{ 0x1E, 0x40 },
+	{ 0x1F, 0x68 },
+	{ 0x22, 0x32 },
+	{ 0x23, 0x10 },
+	{ 0x26, 0x02 },
+	{ 0x28, 0x20 },
+	{ 0x29, 0x10 },
+	{ 0x2B, 0x66 },
+	{ 0x2C, 0x01 },
+	{ 0x2D, 0x18 },
+	{ 0x2F, 0x07 },
+	{ 0x30, 0x49 },
+	{ 0x31, 0x60 },
+	{ 0x32, 0xAB },
+	{ 0x33, 0xAA },
+	{ 0x34, 0xAA },
+	{ 0x35, 0xEA },
+	{ 0x38, 0xFB },
+	{ 0x39, 0xFF },
+	{ 0x3A, 0xFF },
+	{ 0x3B, 0xFF },
+	{ 0x3C, 0xF8 },
+	{ 0x3D, 0x15 },
+	{ 0x42, 0x08 },
+	{ 0x49, 0x01 },
+	{ 0x4D, 0xC0 },
+	{ 0x4E, 0x20 },
+	{ 0x57, 0x40 },
+	{ 0x7F, 0x40 },
+	{ 0xFF, 0x1B },
+	{ 0xBD, 0xC3 },
+	{ 0x2D, 0x02 },
+	{ 0x50, 0x08 },
+	{ 0x5C, 0x0F },
+	{ 0x5D, 0xFF },
+	{ 0x6C, 0xDD },
+	{ 0xFF, 0x0B },
+	{ 0x0F, 0x10 },
+
+	{ 0x0F, 0x40 },
+	{ 0xFF, 0x0C },
+	{ 0xBD, 0xC3 },
+	{ 0x16, 0x3F },
+	{ 0x17, 0x02 },
+	{ 0x18, 0x2F },
+	{ 0x1B, 0x05 },
+	{ 0x1C, 0x04 },
+	{ 0x1D, 0x24 },
+	{ 0x1E, 0x40 },
+	{ 0x1F, 0x68 },
+	{ 0x22, 0x32 },
+	{ 0x23, 0x10 },
+	{ 0x26, 0x02 },
+	{ 0x28, 0xB0 },
+	{ 0x29, 0x10 },
+	{ 0x2B, 0x66 },
+	{ 0x2C, 0x01 },
+	{ 0x2D, 0x18 },
+	{ 0x2F, 0x07 },
+	{ 0x30, 0x33 },
+	{ 0x31, 0x60 },
+	{ 0x32, 0x4E },
+	{ 0x33, 0x55 },
+	{ 0x34, 0x55 },
+	{ 0x35, 0x75 },
+	{ 0x38, 0xEF },
+	{ 0x39, 0xFF },
+	{ 0x3A, 0xFF },
+	{ 0x3B, 0xFF },
+	{ 0x3C, 0xF8 },
+	{ 0x3D, 0x15 },
+	{ 0x42, 0x08 },
+	{ 0x49, 0x01 },
+	{ 0x4D, 0xC0 },
+	{ 0x4E, 0x20 },
+	{ 0x57, 0x40 },
+	{ 0x7F, 0x40 },
+	{ 0xFF, 0x1C },
+	{ 0xBD, 0xC3 },
+	{ 0x2D, 0x02 },
+	{ 0x50, 0x08 },
+	{ 0x5C, 0x0F },
+	{ 0x5D, 0xFF },
+	{ 0x6C, 0xDD },
+	{ 0xFF, 0x0C },
+	{ 0x0F, 0x10 },
+
+	{ 0x0F, 0x40 },
+	{ 0xFF, 0x0D },
+	{ 0xBD, 0xC3 },
+	{ 0x16, 0x3F },
+	{ 0x17, 0x02 },
+	{ 0x18, 0x2F },
+	{ 0x1B, 0x05 },
+	{ 0x1C, 0x04 },
+	{ 0x1D, 0x24 },
+	{ 0x1E, 0x40 },
+	{ 0x1F, 0x60 },
+	{ 0x22, 0x32 },
+	{ 0x23, 0x10 },
+	{ 0x26, 0x02 },
+	{ 0x27, 0x0E },
+	{ 0x29, 0x10 },
+	{ 0x2B, 0x66 },
+	{ 0x2C, 0x01 },
+	{ 0x2D, 0x18 },
+	{ 0x2F, 0x07 },
+	{ 0x30, 0x50 },
+	{ 0x31, 0x70 },
+	{ 0x38, 0xFE },
+	{ 0x39, 0xFF },
+	{ 0x3A, 0xFF },
+	{ 0x3B, 0xFF },
+	{ 0x3C, 0xF8 },
+	{ 0x3D, 0x15 },
+	{ 0x42, 0xA8 },
+	{ 0x49, 0x01 },
+	{ 0x4D, 0xC0 },
+	{ 0x4E, 0x20 },
+	{ 0x57, 0x40 },
+	{ 0x7F, 0x40 },
+	{ 0xFF, 0x1D },
+	{ 0xBD, 0xC3 },
+	{ 0x2D, 0x02 },
+	{ 0x50, 0x08 },
+	{ 0x5C, 0x0F },
+	{ 0x5D, 0xFF },
+	{ 0x6C, 0xDD },
+	{ 0xFF, 0x0D },
+	{ 0x0F, 0x10 },
+
+	{ 0x0F, 0x40 },
+
+};
 
 static const struct siT9531x_reg_cfg siT95317_def[] = {
 	// Configure IO Supply Level
@@ -1429,12 +1837,20 @@ struct ioctl_data {
 
 struct si9531x_clk
 {
-	bool status;		//enable/disable
+	bool status;		//enable/disabled
 	bool linktype;		//single/diff	
-	char * clkName;		
+	bool terminationreg;	//enable/disabled
+	bool pllA;
+	bool pllB;
+	bool pllC;
+	bool pllD;
+	modetype mode;
+	differentialType difflinktype;
+	unsigned int swingvoltage;
 	unsigned int reg;
 	unsigned int freq;
 	unsigned int accuracy ;
+	char * clkName;		
 	struct clk_hw hw;
 	struct device_node *dn;
 	struct drv_si9531x *data;
@@ -1456,6 +1872,7 @@ struct freq_config {
 };
 
 struct drv_si9531x {
+	bool    eeprom_override;
 	u8 	num_inputs;
 	u8 	num_outputs;
 	u16 	chip_id;
@@ -1470,63 +1887,6 @@ struct drv_si9531x {
 	struct 	si9531x_clk *output_clk;
 	struct 	cdev *siT_cdev;
 	struct 	class *siT_cl;
-	struct 	clk *clk;
+	struct 	clk **clkin;
+	struct 	clk **clkout;
 };
-
-/*..............Function Declarations.............*/
-static int  si9531x_dt_parse(struct drv_si9531x *);
-static int  CreateCharDevice(struct drv_si9531x *);
-
-/*...................Ops Inputs....................*/
-static int  si9531x_clkin_set_rate(struct clk_hw *, unsigned long, unsigned long);
-static int  si9531x_clkin_is_enabled(struct clk_hw *);
-static int  si9531x_clkin_enable(struct clk_hw *);
-static void si9531x_clkin_disable(struct clk_hw *);
-static unsigned long si9531x_clkin_recalc_rate(struct clk_hw *, unsigned long);
-
-/*...................Ops Outputs...................*/
-static int  si9531x_clkout_prepare(struct clk_hw *);
-static int  si9531x_clkout_set_rate(struct clk_hw *, unsigned long, unsigned long);
-static int  si9531x_clkout_is_enabled(struct clk_hw *);
-static int  si9531x_clkout_enable(struct clk_hw *);
-static void si9531x_clkout_disable(struct clk_hw *);
-static void si9531x_clkout_unprepare(struct clk_hw *);
-static unsigned long si9531x_clkout_recalc_rate(struct clk_hw *, unsigned long);
-
-/*....................... Change frequency plans ..................*/
-static int  set_frequency_plan(unsigned int);
-static int  siT9531x_write_multiple(struct drv_si9531x *,const struct  siT9531x_reg_cfg *, unsigned int);
-static int  soft_rst_por_chip(void);
-static int  clkout_set_frequency(struct i2c_client *, int, unsigned int);
-static int  clkin_set_frequency(struct i2c_client *, int, unsigned int, unsigned int);
-static int  clkout_enable_disable(struct i2c_client *, int, bool);
-static int  clkin_enable_disable(struct i2c_client *, int , bool);
-static int  switch_to_PRGCmd_state(struct i2c_client *,unsigned int);
-static int  do_updatenvm_lockloop(struct i2c_client *client);
-static int  write_divn1_to_registers(struct i2c_client *, unsigned int, u16 );
-static int  write_divn_to_registers(struct i2c_client *, unsigned int, struct divider_data *);
-static int  write_divn2_to_registers(struct i2c_client *, unsigned int, struct divider_data *);
-static bool clkout_is_enable_disable(struct i2c_client *, int, bool, unsigned int *);
-static bool clkin_is_enable_disable(struct i2c_client *, int, bool, unsigned int *);
-static u16  calculate_divn1(unsigned int);
-static struct divider_data calculate_divn(unsigned int, u64);
-static struct divider_data calculate_divn2(unsigned int, u64);
-static int select_pll_page(struct i2c_client *, int);
-static int set_fast_frequency(struct i2c_client *, unsigned int);
-static int set_normal_frequency(struct i2c_client *, unsigned int);
-static int set_accuracy(struct i2c_client *, unsigned int);
-
-
-/*....................... Input Settings .........................*/
-static int  clkin_set_doubler(struct i2c_client *,unsigned int);
-
-/*....................... Validation Functions ...................*/
-static int  validate_xtalfreq_range(unsigned int);
-static int  validate_inputfreq_range(unsigned int);
-static int  validate_outputfreq_range(unsigned int);
-static int  validate_inputclkid_range(unsigned int, unsigned int);
-static int  validate_outputclkid_range(unsigned int, unsigned int) ;
-static int  validate_normalbw_range(unsigned int);
-static int  validate_fastbw_range(unsigned int);
-static int  validate_normalbw(unsigned int,unsigned int);
-static int  validate_fastbw(unsigned int,unsigned int);
